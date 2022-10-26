@@ -19,132 +19,73 @@ class Order:
         [order_id, wait_time, expected_wait_time, delay_vs_expected, order_status]
         and filters out non-delivered orders unless specified
         """
-        # Hint: Within this instance method, you have access to the instance of the class Order in the variable self, as well as all its attributes
-        # $CHALLENGIFY_BEGIN
-        # make sure to create a copy rather than a "view"
-        orders = self.data['orders'].copy()
-
-        # filter delivered orders
-        if is_delivered:
-            orders = orders.query("order_status=='delivered'").copy()
-
-        # handle datetime
-        orders.loc[:, 'order_delivered_customer_date'] = \
-            pd.to_datetime(orders['order_delivered_customer_date'])
-        orders.loc[:, 'order_estimated_delivery_date'] = \
-            pd.to_datetime(orders['order_estimated_delivery_date'])
-        orders.loc[:, 'order_purchase_timestamp'] = \
-            pd.to_datetime(orders['order_purchase_timestamp'])
-
-        # compute delay vs expected
-        orders.loc[:, 'delay_vs_expected'] = \
-            (orders['order_delivered_customer_date'] -
-             orders['order_estimated_delivery_date']) / np.timedelta64(24, 'h')
-
-        def handle_delay(x):
-            # We only want to keep delay where wait_time is longer than expected (not the other way around)
-            # This is what drives customer dissatisfaction!
-            if x > 0:
-                return x
-            else:
-                return 0
-
-        orders.loc[:, 'delay_vs_expected'] = \
-            orders['delay_vs_expected'].apply(handle_delay)
-
-        # compute wait time
-        orders.loc[:, 'wait_time'] = \
-            (orders['order_delivered_customer_date'] -
-             orders['order_purchase_timestamp']) / np.timedelta64(24, 'h')
-
-        # compute expected wait time
-        orders.loc[:, 'expected_wait_time'] = \
-            (orders['order_estimated_delivery_date'] -
-             orders['order_purchase_timestamp']) / np.timedelta64(24, 'h')
-
-        return orders[[
-            'order_id', 'wait_time', 'expected_wait_time', 'delay_vs_expected',
-            'order_status'
-        ]]
-        # $CHALLENGIFY_END
+#orders[['order_delivered_carrier_date','order_delivered_customer_date','order_estimated_delivery_date','order_approved_at']]\
+#= orders[['order_delivered_carrier_date','order_delivered_customer_date','order_estimated_delivery_date','order_approved_at']].apply(date, axis=1)
+        if is_delivered == True:
+            order_status_ = 'delivered'
+        orders = self.data['orders']
+        df = orders[orders['order_status'] == order_status_]
+        df['order_delivered_carrier_date'] = pd.to_datetime(df.order_delivered_carrier_date)
+        df['order_delivered_customer_date'] =pd.to_datetime(df.order_delivered_customer_date)
+        df['order_estimated_delivery_date'] = pd.to_datetime(df.order_estimated_delivery_date)
+        df['order_purchase_timestamp'] = pd.to_datetime(df.order_purchase_timestamp)
+        df['wait_time'] = df['order_delivered_customer_date'] - df['order_purchase_timestamp']
+        df['expected_wait_time'] = df['order_estimated_delivery_date'] - df['order_purchase_timestamp']
+        df['delay_vs_expected'] = df['wait_time'] - df['expected_wait_time']
+        dfa = df[['order_id','wait_time','expected_wait_time','delay_vs_expected','order_status']]
+        return dfa
 
     def get_review_score(self):
         """
         Returns a DataFrame with:
         order_id, dim_is_five_star, dim_is_one_star, review_score
         """
-        # $CHALLENGIFY_BEGIN
-        # import data
         reviews = self.data['order_reviews']
+        def many_star(x,y):
+            return y[x]
+        five_star = {5:1,4:0,3:0,2:0,1:0}
+        one_star = {5:0,4:0,3:0,2:0,1:1}
 
-        def dim_five_star(d):
-            if d == 5:
-                return 1
-            else:
-                return 0
-
-        def dim_one_star(d):
-            if d == 1:
-                return 1
-            else:
-                return 0
-
-        reviews.loc[:, 'dim_is_five_star'] =\
-            reviews['review_score'].apply(dim_five_star)
-
-        reviews.loc[:, 'dim_is_one_star'] =\
-            reviews['review_score'].apply(dim_one_star)
-
-        return reviews[[
-            'order_id', 'dim_is_five_star', 'dim_is_one_star', 'review_score'
-        ]]
-        # $CHALLENGIFY_END
+        reviews['dim_is_five_star'] = reviews['review_score'].apply(many_star,args=(five_star,))
+        reviews['dim_is_one_star'] = reviews['review_score'].apply(many_star,args=(one_star,))
+        review_count = reviews[['order_id','dim_is_five_star', 'dim_is_one_star','review_score']]
+        return review_count
 
     def get_number_products(self):
         """
         Returns a DataFrame with:
         order_id, number_of_products
         """
-        # $CHALLENGIFY_BEGIN
-        data = self.data
-        products = \
-            data['order_items']\
-            .groupby('order_id',
-                     as_index=False).agg({'order_item_id': 'count'})
-        products.columns = ['order_id', 'number_of_products']
-        return products
-        # $CHALLENGIFY_END
+        products = self.data['order_items'].copy()
+        prod = products[['order_id', 'product_id']]
+        number_of_products = prod.groupby('order_id').count()[['product_id']]
+        number_of_products.rename(columns = {'product_id':'number_of_products'}, inplace=True)
+        number_of_products.reset_index(inplace=True)
+        return number_of_products
 
     def get_number_sellers(self):
         """
         Returns a DataFrame with:
         order_id, number_of_sellers
         """
-        # $CHALLENGIFY_BEGIN
-        data = self.data
-        sellers = \
-            data['order_items']\
-            .groupby('order_id')['seller_id'].nunique().reset_index()
-        sellers.columns = ['order_id', 'number_of_sellers']
+        items = self.data['order_items'].copy()
+        item = items[['order_id','seller_id']]
 
-        return sellers
-        # $CHALLENGIFY_END
+        number_of_sellers = item.groupby('order_id').count()
+        number_of_sellers.rename(columns={'seller_id':'number_of_sellers'}, inplace = True)
+        number_of_sellers.reset_index(inplace=True)
+        return number_of_sellers
 
     def get_price_and_freight(self):
         """
         Returns a DataFrame with:
         order_id, price, freight_value
         """
-        # $CHALLENGIFY_BEGIN
-        data = self.data
-        price_freight = \
-            data['order_items']\
-            .groupby('order_id',
-                     as_index=False).agg({'price': 'sum',
-                                          'freight_value': 'sum'})
-
-        return price_freight
-        # $CHALLENGIFY_END
+        items = self.data['order_items'].copy()
+        price = items[['order_id','price','freight_value']]
+        price_ = price.groupby('order_id').sum()[['price','freight_value']]
+        price_.reset_index(inplace=True)
+        return price_
 
     # Optional
     def get_distance_seller_customer(self):
@@ -152,9 +93,6 @@ class Order:
         Returns a DataFrame with:
         order_id, distance_seller_customer
         """
-        # $CHALLENGIFY_BEGIN
-
-        # import data
         data = self.data
         orders = data['orders']
         order_items = data['order_items']
@@ -217,7 +155,6 @@ class Order:
                                                       'mean'})
 
         return order_distance
-        # $CHALLENGIFY_END
 
     def get_training_data(self,
                           is_delivered=True,
@@ -229,23 +166,20 @@ class Order:
         'number_of_products', 'number_of_sellers', 'price', 'freight_value',
         'distance_seller_customer']
         """
-        # Hint: make sure to re-use your instance methods defined above
-        # $CHALLENGIFY_BEGIN
-        training_set =\
-            self.get_wait_time(is_delivered)\
-                .merge(
-                self.get_review_score(), on='order_id'
-            ).merge(
-                self.get_number_products(), on='order_id'
-            ).merge(
-                self.get_number_sellers(), on='order_id'
-            ).merge(
-                self.get_price_and_freight(), on='order_id'
-            )
-        # Skip heavy computation of distance_seller_customer unless specified
-        if with_distance_seller_customer:
-            training_set = training_set.merge(
-                self.get_distance_seller_customer(), on='order_id')
+        df1 = self.get_wait_time(is_delivered=True)
+        df2 = self.get_review_score()
+        df3 = self.get_number_products()
+        df4 = self.get_number_sellers()
+        df5 = self.get_price_and_freight()
 
-        return training_set.dropna()
-        # $CHALLENGIFY_END
+        # Hint: make sure to re-use your instance methods defined above
+        dfa = df1.merge(df2,on='order_id',how='inner').merge(df3,on='order_id',how='inner').merge(df4,on='order_id',how='inner').merge(df5,on='order_id',how='inner')
+        dfa = dfa.dropna()
+
+        if with_distance_seller_customer==True:
+            df6 = self.get_distance_seller_customer()
+            dfb = dfa.merge(df6, on='order_id',how='outer')
+            dfb.dropna(inplace=True)
+            return dfb
+
+        return dfa
